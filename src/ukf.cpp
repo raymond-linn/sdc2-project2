@@ -179,6 +179,26 @@ void UKF::Prediction(double delta_t) {
  */
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
+  VectorXd z = meas_package.raw_measurements_;
+  MatrixXd H_lidar = MatrixXd(2, 5);
+  H_lidar << 1, 0, 0, 0, 0,
+          0, 1, 0, 0, 0;
+
+  VectorXd z_pred = H_lidar * x_;
+  VectorXd z_diff = z - z_pred;
+  MatrixXd Ht = H_lidar.transpose();
+  MatrixXd S = H_lidar * P_ * Ht + R_lidar_;
+  MatrixXd Si = S.inverse();
+  MatrixXd PHt = P_ * Ht;
+  MatrixXd K = PHt * Si;
+
+  // new state
+  x_ = x_ + K * z_diff;
+  long x_size = x_.size();
+  MatrixXd I = MatrixXd::Identity(x_size, x_size);
+  P_ = (I - K * H_lidar) * P_;
+
+  /*
   const VectorXd z = meas_package.raw_measurements_;
 
   // 1) Transform to Lidar measurement space
@@ -202,6 +222,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   // 8) update
   x_ = x_ + K * z_diff;
   P_ = P_ - K * S * K.transpose();
+  */
 
   // 9) Calculate NIS
   NIS_radar_ = z_diff.transpose() * S.inverse() * z_diff;
@@ -413,21 +434,17 @@ MatrixXd UKF::TransformSigmaToRadarSpace(const MatrixXd& Xsig_pred){
     double v2 = sin(yaw)*v;
 
     // measurement model
+    // add the safety
+    if (fabs(p_x) < 0.0001){
+      p_x = 1;
+    }
+    if (fabs(p_y) < 0.001){
+      p_y = 1;
+    }
     double rho = sqrt(p_x*p_x + p_y*p_y);
     double phi = atan2(p_y,p_x);
     double rho_dot = (p_x*v1 + p_y*v2 ) / rho;
 
-    if (rho != rho){
-      rho = 0;
-    }
-
-    if (phi != phi){
-      phi = 0;
-    }
-
-    if (rho_dot != rho_dot) {
-      rho_dot = 0;
-    }
     Zsig(0,i) =  rho; //r
     Zsig(1,i) =  phi; //phi
     Zsig(2,i) =  rho_dot; //r_dot
